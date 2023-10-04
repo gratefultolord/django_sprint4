@@ -17,7 +17,7 @@ from django.views.generic import (
 )
 
 
-class IndexView(LoginRequiredMixin, ListView):
+class IndexView(ListView):
     model = Post
     template_name = 'blog/index.html'
     queryset = is_published_query()
@@ -102,16 +102,15 @@ class PostDetailView(LoginRequiredMixin, DetailView):
     model = Post
     template_name = "blog/detail.html"
 
-    def get_object(self, queryset=None):
-        post = get_object_or_404(Post, pk=self.kwargs["pk"])
-        if post.author == self.request.user:
-            return all_query().get(pk=self.kwargs["pk"])
-        return is_published_query().get(pk=self.kwargs["pk"])
+    def get_queryset(self):
+        self.post_data = get_object_or_404(Post, pk=self.kwargs["pk"])
+        if self.post_data.author == self.request.user:
+            return all_query().filter(pk=self.kwargs["pk"])
+        return is_published_query().filter(pk=self.kwargs["pk"])
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["flag"] = self.object.is_published
-        context["form"] = CommentForm() if self.object.is_published else None
+        context["form"] = CommentForm()  # Always display the comment form
         context["comments"] = self.object.comments.all().select_related("author")
         return context
 
