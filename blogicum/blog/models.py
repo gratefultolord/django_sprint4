@@ -82,8 +82,8 @@ class Post(PublishedDateModel):
 class Comment(models.Model):
     text = models.TextField(verbose_name='Текст комментария')
     created_at = models.DateTimeField(
-        auto_now_add=True, verbose_name='Добавлен'
-        )
+        auto_now_add=True,
+        verbose_name='Добавлен')
     author = models.ForeignKey(
         User,
         on_delete=models.CASCADE,

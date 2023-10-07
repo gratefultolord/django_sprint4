@@ -133,10 +133,9 @@ class PostDetailView(LoginRequiredMixin, DetailView):
 
     def get_queryset(self):
         post = get_object_or_404(Post, pk=self.kwargs[PK_KWARG])
-        queryset = all_query(
-            annotate_comment_count=False
-            ) if self.request.user == post.author else is_published_query(
-                annotate_comment_count=False)
+        queryset = (all_query(annotate_comment_count=False)
+                    if self.request.user == post.author
+                    else is_published_query(annotate_comment_count=False))
         return queryset
 
     def get_context_data(self, **kwargs):
