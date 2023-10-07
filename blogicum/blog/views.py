@@ -84,8 +84,7 @@ class CategoryPostsView(ListView):
         context = super().get_context_data(**kwargs)
         category_slug = self.kwargs.get(CATEGORY_KWARG)
         context[CATEGORY_KWARG] = get_object_or_404(
-            Category, slug=category_slug, is_published=True
-        )
+            Category, slug=category_slug, is_published=True)
         return context
 
 
@@ -109,11 +108,6 @@ class PostCreateView(LoginRequiredMixin, CreateView):
 class PostUpdateView(PostMixinView, UpdateView):
     form_class = PostForm
 
-    def test_func(self):
-        self.post_id = self.kwargs['pk']
-        post = self.get_object()
-        return post.author == self.request.user
-
     def get_success_url(self):
         url = reverse('blog:post_detail', args=(self.post_id,))
         return url
@@ -121,17 +115,6 @@ class PostUpdateView(PostMixinView, UpdateView):
 
 class PostDeleteView(PostMixinView, DeleteView):
     success_url = reverse_lazy('blog:index')
-
-    def test_func(self):
-        self.post_id = self.kwargs['pk']
-        post = self.get_object()
-        self.pub_date = post.pub_date.strftime('%d E Y')
-        self.location_name = (
-            post.location.name if post.location and post.location.is_published else 'Планета Земля'
-            )
-        self.title = post.title
-        self.text = post.text
-        return post.author == self.request.user
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
