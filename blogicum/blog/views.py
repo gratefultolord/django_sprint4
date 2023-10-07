@@ -1,5 +1,3 @@
-from typing import Any
-from django.db import models
 from blog.forms import CommentForm, PostForm, UserForm
 from blog.models import Category, Comment, Post
 from blog.querysets import all_query, is_published_query
@@ -78,7 +76,7 @@ class CategoryPostsView(ListView):
         category_slug = self.kwargs.get(CATEGORY_KWARG)
         category = get_object_or_404(
             Category, slug=category_slug, is_published=True
-            )
+        )
         queryset = is_published_query().filter(category=category)
         return queryset
 
@@ -87,7 +85,7 @@ class CategoryPostsView(ListView):
         category_slug = self.kwargs.get(CATEGORY_KWARG)
         context[CATEGORY_KWARG] = get_object_or_404(
             Category, slug=category_slug, is_published=True
-            )
+        )
         return context
 
 
@@ -128,14 +126,16 @@ class PostDeleteView(PostMixinView, DeleteView):
         self.post_id = self.kwargs['pk']
         post = self.get_object()
         self.pub_date = post.pub_date.strftime('%d E Y')
-        self.location_name = post.location.name if post.location and post.location.is_published else 'Планета Земля'
+        self.location_name = (
+            post.location.name if post.location and post.location.is_published else 'Планета Земля'
+            )
         self.title = post.title
         self.text = post.text
         return post.author == self.request.user
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['form'] = PostForm(instance=self.object) 
+        context['form'] = PostForm(instance=self.object)
         return context
 
 
@@ -149,7 +149,8 @@ class PostDetailView(LoginRequiredMixin, DetailView):
     def get_queryset(self):
         post = get_object_or_404(Post, pk=self.kwargs[PK_KWARG])
         queryset = all_query(
-            annotate_comment_count=False) if self.request.user == post.author else is_published_query(
+            annotate_comment_count=False
+            ) if self.request.user == post.author else is_published_query(
                 annotate_comment_count=False)
         return queryset
 
