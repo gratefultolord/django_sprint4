@@ -84,7 +84,9 @@ class CategoryPostsView(ListView):
         context = super().get_context_data(**kwargs)
         category_slug = self.kwargs.get(CATEGORY_KWARG)
         context[CATEGORY_KWARG] = get_object_or_404(
-            Category, slug=category_slug, is_published=True)
+            Category,
+            slug=category_slug,
+            is_published=True)
         return context
 
 
