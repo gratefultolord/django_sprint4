@@ -1,5 +1,3 @@
-from typing import Any
-from django.db import models
 from blog.forms import CommentForm, PostForm, UserForm
 from blog.models import Category, Comment, Post
 from blog.querysets import all_query, is_published_query
@@ -11,7 +9,6 @@ from django.contrib.auth.models import User
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
-from django.utils import timezone
 from django.views.generic import (
     CreateView,
     DeleteView,
