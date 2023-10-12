@@ -22,5 +22,5 @@ def is_published_query(annotate_comment_count=True):
         pub_date__lte=timezone.now(),
         is_published=True,
         category__is_published=True,
-    )
+    ).order_by('-pub_date')
     return query_set

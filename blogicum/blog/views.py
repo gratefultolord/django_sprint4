@@ -1,3 +1,5 @@
+from typing import Any
+from django.db import models
 from blog.forms import CommentForm, PostForm, UserForm
 from blog.models import Category, Comment, Post
 from blog.querysets import all_query, is_published_query
@@ -17,6 +19,7 @@ from django.views.generic import (
     ListView,
     UpdateView,
 )
+from django.views.generic.detail import SingleObjectMixin
 
 OBJECTS_PER_PAGE = 10
 USERNAME_KWARG = 'username'
@@ -36,7 +39,7 @@ class UserEditView(LoginRequiredMixin, UpdateView):
     form_class = UserForm
     template_name = 'blog/user.html'
 
-    def get_object(self, queryset=None):
+    def get_object(self):
         return self.request.user
 
     def get_success_url(self):
@@ -44,50 +47,52 @@ class UserEditView(LoginRequiredMixin, UpdateView):
         return reverse('blog:profile', kwargs={USERNAME_KWARG: username})
 
 
-class UserPostsView(ListView):
+class UserPostsView(SingleObjectMixin, ListView):
     model = Post
     template_name = 'blog/profile.html'
-    queryset = is_published_query()
-    author = None
     paginate_by = OBJECTS_PER_PAGE
+    queryset = is_published_query()
 
-    def get_queryset(self):
+    def get(self, request, *args, **kwargs):
         username = self.kwargs.get(USERNAME_KWARG)
         if not username:
-            raise Http404
-        self.author = get_object_or_404(User, username=username)
-        if self.author == self.request.user:
-            return all_query().filter(author=self.author)
-        return super().get_queryset().filter(author=self.author)
+            raise Http404('Ошибка 404')
+        self.object = get_object_or_404(User, username=username)
+        return super().get(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['profile'] = self.author
+        context['profile'] = self.object
         return context
-
-
-class CategoryPostsView(ListView):
-    model = Post
-    template_name = 'blog/category.html'
-    context_object_name = 'page_obj'
-    paginate_by = OBJECTS_PER_PAGE
 
     def get_queryset(self):
-        category_slug = self.kwargs.get(CATEGORY_KWARG)
-        category = get_object_or_404(
-            Category, slug=category_slug, is_published=True
-        )
-        queryset = is_published_query().filter(category=category)
-        return queryset
+        if self.object == self.request.user:
+            return all_query().filter(author=self.object)
+        return super().get_queryset().filter(author=self.object)
+
+
+class CategoryPostsView(SingleObjectMixin, ListView):
+    model = Post
+    template_name = 'blog/category.html'
+    paginate_by = OBJECTS_PER_PAGE
+    queryset = is_published_query()
+
+    def get(self, request, *args, **kwargs):
+        category = self.kwargs.get(CATEGORY_KWARG)
+        if not category:
+            raise Http404('Ошибка 404')
+        self.object = get_object_or_404(
+            Category, slug=category, is_published=True)
+        return super().get(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        category_slug = self.kwargs.get(CATEGORY_KWARG)
-        context[CATEGORY_KWARG] = get_object_or_404(
-            Category,
-            slug=category_slug,
-            is_published=True)
+        category = self.object
+        context[CATEGORY_KWARG] = category
         return context
+
+    def get_queryset(self):
+        return super().get_queryset().filter(category=self.object)
 
 
 class PostCreateView(LoginRequiredMixin, CreateView):
@@ -124,19 +129,22 @@ class PostDeleteView(PostMixinView, DeleteView):
         return context
 
 
-class PostDetailView(LoginRequiredMixin, DetailView):
+class PostDetailView(DetailView):
     model = Post
     template_name = 'blog/detail.html'
     pk_url_kwarg = PK_KWARG
-    slug_field = PK_KWARG
-    slug_url_kwarg = PK_KWARG
 
-    def get_queryset(self):
-        post = get_object_or_404(Post, pk=self.kwargs[PK_KWARG])
-        queryset = (all_query(annotate_comment_count=False)
-                    if self.request.user == post.author
-                    else is_published_query(annotate_comment_count=False))
-        return queryset
+    def get_object(self, queryset=None):
+        object = super().get_object(queryset=queryset)
+        # Проверка на авторство
+        if self.request.user == object.author:
+            return object
+        # В случае провала - проверка на 'is published'
+        if object.is_published:
+            return object
+        # В случае провала обоих проверок - ошибка 404
+        else:
+            raise Http404('Ошибка 404')
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -148,11 +156,11 @@ class PostDetailView(LoginRequiredMixin, DetailView):
 
 @login_required
 def add_comment(request, pk):
-    post = get_object_or_404(
-        Post,
-        pub_date__lte=timezone.now(),
-        is_published=True,
-        pk=pk)
+    if request.user.is_authenticated:
+        post = get_object_or_404(Post, pk=pk)
+    else:
+        post = get_object_or_404(
+            is_published_query(annotate_comment_count=False), pk=pk)
     form = CommentForm(request.POST or None)
     if form.is_valid():
         comment = form.save(commit=False)
@@ -163,11 +171,11 @@ def add_comment(request, pk):
 
 
 @login_required
-def edit_comment(request, comment_id, post_id):
-    instance = get_object_or_404(Comment, id=comment_id, post_id=post_id)
+def edit_comment(request, comment_id, pk):
+    instance = get_object_or_404(Comment, id=comment_id, post_id=pk)
     form = CommentForm(request.POST or None, instance=instance)
     if instance.author != request.user:
-        return redirect('blog:post_detail', pk=post_id)
+        return redirect('blog:post_detail', pk=pk)
     context = {
         'form': form,
         'comment': instance
@@ -175,17 +183,17 @@ def edit_comment(request, comment_id, post_id):
 
     if form.is_valid():
         form.save()
-        return redirect('blog:post_detail', pk=post_id)
+        return redirect('blog:post_detail', pk=pk)
     return render(request, 'blog/comment.html', context)
 
 
 @login_required
-def delete_comment(request, comment_id, post_id):
-    instance = get_object_or_404(Comment, id=comment_id, post_id=post_id)
+def delete_comment(request, comment_id, pk):
+    instance = get_object_or_404(Comment, id=comment_id, post_id=pk)
     if instance.author != request.user:
-        return redirect('blog:post_detail', pk=post_id)
+        return redirect('blog:post_detail', pk=pk)
     context = {'comment': instance}
     if request.method == 'POST':
         instance.delete()
-        return redirect('blog:post_detail', pk=post_id)
+        return redirect('blog:post_detail', pk=pk)
     return render(request, 'blog/comment.html', context)
