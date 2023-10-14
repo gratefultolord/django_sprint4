@@ -6,7 +6,6 @@ from blog.mixins import PostMixinView
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.models import User
-from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.views.generic import (
@@ -48,24 +47,24 @@ class UserPostsView(SingleObjectMixin, ListView):
     model = Post
     template_name = 'blog/profile.html'
     paginate_by = OBJECTS_PER_PAGE
-    queryset = is_published_query()
+    queryset = all_query()
+    slug_url_kwarg = USERNAME_KWARG
+    slug_field = USERNAME_KWARG
 
     def get(self, request, *args, **kwargs):
-        username = self.kwargs.get(USERNAME_KWARG)
-        if not username:
-            raise Http404('Ошибка 404')
-        self.object = get_object_or_404(User, username=username)
+        self.user = self.get_object(queryset=User.objects.all())
+        self.object = self.user
         return super().get(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['profile'] = self.object
+        context['profile'] = self.user
         return context
 
     def get_queryset(self):
-        if self.object == self.request.user:
-            return all_query().filter(author=self.object)
-        return super().get_queryset().filter(author=self.object)
+        if self.user != self.request.user:
+            return is_published_query().filter(author=self.user)
+        return super().get_queryset().filter(author=self.user)
 
 
 class CategoryPostsView(SingleObjectMixin, ListView):
@@ -73,23 +72,22 @@ class CategoryPostsView(SingleObjectMixin, ListView):
     template_name = 'blog/category.html'
     paginate_by = OBJECTS_PER_PAGE
     queryset = is_published_query()
+    slug_url_kwarg = CATEGORY_KWARG
+    slug_field = 'slug'
 
     def get(self, request, *args, **kwargs):
-        category = self.kwargs.get(CATEGORY_KWARG)
-        if not category:
-            raise Http404('Ошибка 404')
-        self.object = get_object_or_404(
-            Category, slug=category, is_published=True)
+        self.category = self.get_object(
+            queryset=Category.objects.filter(is_published=True))
+        self.object = self.category
         return super().get(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        category = self.object
-        context[CATEGORY_KWARG] = category
+        context[CATEGORY_KWARG] = self.category
         return context
 
     def get_queryset(self):
-        return super().get_queryset().filter(category=self.object)
+        return super().get_queryset().filter(category=self.category)
 
 
 class PostCreateView(LoginRequiredMixin, CreateView):
@@ -131,17 +129,12 @@ class PostDetailView(DetailView):
     template_name = 'blog/detail.html'
     pk_url_kwarg = PK_KWARG
 
-    def get_object(self, queryset=None):
-        object = super().get_object(queryset=queryset)
-        # Проверка на авторство
-        if self.request.user == object.author:
-            return object
-        # В случае провала - проверка на 'is published'
-        if object.is_published:
-            return object
-        # В случае провала обоих проверок - ошибка 404
-        else:
-            raise Http404('Ошибка 404')
+    def get_queryset(self):
+        post = self.get_object(queryset=Post.objects.all())
+        queryset = (all_query(annotate_comment_count=False)
+                    if self.request.user == post.author
+                    else is_published_query(annotate_comment_count=False))
+        return queryset
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -153,11 +146,11 @@ class PostDetailView(DetailView):
 
 @login_required
 def add_comment(request, pk):
-    if request.user.is_authenticated:
-        post = get_object_or_404(Post, pk=pk)
-    else:
+    post = get_object_or_404(
+        is_published_query(annotate_comment_count=False), pk=pk)
+    if post.author == request.user:
         post = get_object_or_404(
-            is_published_query(annotate_comment_count=False), pk=pk)
+            all_query(annotate_comment_count=False), pk=pk)
     form = CommentForm(request.POST or None)
     if form.is_valid():
         comment = form.save(commit=False)
