@@ -53,6 +53,7 @@ class UserPostsView(SingleObjectMixin, ListView):
 
     def get(self, request, *args, **kwargs):
         self.user = self.get_object(queryset=User.objects.all())
+        # get ожидает self.object, поэтому надо явно указать
         self.object = self.user
         return super().get(request, *args, **kwargs)
 
@@ -73,7 +74,6 @@ class CategoryPostsView(SingleObjectMixin, ListView):
     paginate_by = OBJECTS_PER_PAGE
     queryset = is_published_query()
     slug_url_kwarg = CATEGORY_KWARG
-    slug_field = 'slug'
 
     def get(self, request, *args, **kwargs):
         self.category = self.get_object(
@@ -146,11 +146,12 @@ class PostDetailView(DetailView):
 
 @login_required
 def add_comment(request, pk):
-    post = get_object_or_404(
-        is_published_query(annotate_comment_count=False), pk=pk)
-    if post.author == request.user:
-        post = get_object_or_404(
-            all_query(annotate_comment_count=False), pk=pk)
+    post_query = get_object_or_404(Post)
+    if request.user == post_query.author:
+        post = all_query(annotate_comment_count=False)
+    else:
+        post = is_published_query(annotate_comment_count=False)
+    post = get_object_or_404(post, pk=pk)
     form = CommentForm(request.POST or None)
     if form.is_valid():
         comment = form.save(commit=False)
